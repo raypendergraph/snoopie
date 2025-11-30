@@ -19,7 +19,7 @@ const App = struct {
     }
 };
 
-fn onScanClicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+fn onScanClicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.c) void {
     _ = button;
     _ = user_data;
 
@@ -43,7 +43,7 @@ fn onScanClicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void
     std.debug.print("Adapter address: {s}\n", .{addr});
 }
 
-fn onActivate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
+fn onActivate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.c) void {
     _ = user_data;
 
     // Create main window
@@ -63,8 +63,8 @@ fn onActivate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void 
     c.gtk_widget_set_margin_bottom(main_box, 10);
     c.gtk_window_set_child(@ptrCast(window), main_box);
 
-    // Create label
-    const label = c.gtk_label_new("Bluetooth Research & Hacking Tool");
+    // Create labelms-vscode.cpptools
+    const label = c.gtk_label_new("Bluetooth Research");
     c.gtk_box_append(@ptrCast(main_box), label);
 
     // Create scan button
