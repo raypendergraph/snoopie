@@ -1,6 +1,8 @@
 {
   "editor.formatOnSave": true,
-  "editor.rulers": [100],
+  "editor.rulers": [
+    100
+  ],
   "editor.tabSize": 4,
   "editor.insertSpaces": true,
   "files.eol": "\n",
@@ -11,7 +13,6 @@
     "editor.formatOnSave": true
   },
   "zig.path": "zig",
-  "zig.zls.path": "zls",
   "zig.buildOnSaveProvider": false,
   "keyboard.dispatch": "keyCode"
 }
