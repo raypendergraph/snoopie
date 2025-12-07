@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkBox" id="root_box">
+    <property name="orientation">horizontal</property>
+    <property name="spacing">10</property>
+    <property name="margin-start">10</property>
+    <property name="margin-end">10</property>
+    <property name="margin-top">5</property>
+    <property name="margin-bottom">5</property>
+    <style>
+      <class name="device-list-item"/>
+    </style>
+
+    <!-- Device name label -->
+    <child>
+      <object class="GtkLabel" id="name_label">
+        <property name="halign">start</property>
+        <property name="hexpand">true</property>
+        <property name="ellipsize">end</property>
+        <property name="label">Unknown Device</property>
+        <style>
+          <class name="device-name"/>
+        </style>
+      </object>
+    </child>
+
+    <!-- MAC address label -->
+    <child>
+      <object class="GtkLabel" id="address_label">
+        <property name="halign">start</property>
+        <property name="label">00:00:00:00:00:00</property>
+        <style>
+          <class name="device-address"/>
+        </style>
+      </object>
+    </child>
+
+    <!-- RSSI signal strength label -->
+    <child>
+      <object class="GtkLabel" id="rssi_label">
+        <property name="halign">end</property>
+        <property name="label">? dBm</property>
+        <style>
+          <class name="device-rssi"/>
+        </style>
+      </object>
+    </child>
+
+    <!-- Connection status label -->
+    <child>
+      <object class="GtkLabel" id="status_label">
+        <property name="halign">end</property>
+        <property name="label"></property>
+        <style>
+          <class name="device-status"/>
+        </style>
+      </object>
+    </child>
+  </object>
+</interface>

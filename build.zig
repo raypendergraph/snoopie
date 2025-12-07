@@ -4,6 +4,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Create core module
+    const core_module = b.addModule("core", .{
+        .root_source_file = b.path("src/core.zig"),
+    });
+
     const exe = b.addExecutable(.{
         .name = "bt",
         .root_module = b.createModule(.{
@@ -13,12 +18,16 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Add core module to executable
+    exe.root_module.addImport("core", core_module);
+
     // Link GTK4 libraries
     exe.linkLibC();
     exe.linkSystemLibrary("gtk4");
     exe.linkSystemLibrary("cairo");
     exe.linkSystemLibrary("gobject-2.0");
     exe.linkSystemLibrary("glib-2.0");
+    exe.linkSystemLibrary("gio-2.0");
 
     // Link Bluetooth libraries (bluez on Linux)
     exe.linkSystemLibrary("bluetooth");

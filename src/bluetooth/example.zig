@@ -31,7 +31,7 @@ pub fn main() !void {
 
     // Get adapter info
     const adapter_info = try provider.getAdapterInfo();
-    std.debug.print("Adapter: {} ({})\n", .{ adapter_info.address, adapter_info.name });
+    std.debug.print("Adapter: {any} ({s})\n", .{ adapter_info.address, adapter_info.name });
     defer {
         var info = adapter_info;
         info.deinit(allocator);
@@ -62,25 +62,25 @@ fn eventCallback(event: providers.Event, user_data: ?*anyopaque) void {
             std.debug.print(" RSSI: {}dBm\n", .{device.rssi});
         },
         .device_connected => |conn| {
-            std.debug.print("Device {} state: {}\n", .{ conn.address, conn.state });
+            std.debug.print("Device {any} state: {any}\n", .{ conn.address, conn.state });
         },
         .adapter_state_changed => |state| {
-            std.debug.print("Adapter state: {}\n", .{state.state});
+            std.debug.print("Adapter state: {any}\n", .{state.state});
         },
         .services_discovered => |services| {
-            std.debug.print("Services discovered for {}: {} services\n", .{
+            std.debug.print("Services discovered for {any}: {} services\n", .{
                 services.address,
                 services.services.len,
             });
         },
         .characteristic_changed => |char| {
-            std.debug.print("Characteristic {} changed: {} bytes\n", .{
+            std.debug.print("Characteristic {any} changed: {} bytes\n", .{
                 char.characteristic_uuid,
                 char.value.len,
             });
         },
         .hci_event => |hci| {
-            std.debug.print("HCI event: type={} len={}\n", .{
+            std.debug.print("HCI event: type={any} len={}\n", .{
                 hci.packet_type,
                 hci.data.len,
             });

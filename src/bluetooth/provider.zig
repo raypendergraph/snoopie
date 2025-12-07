@@ -1,5 +1,6 @@
 const std = @import("std");
 const primitives = @import("primitives.zig");
+const AsyncQueue = @import("../core/async.zig").AsyncQueue;
 
 /// Provider interface - all Bluetooth providers must implement this
 pub const Provider = struct {
@@ -19,8 +20,8 @@ pub const Provider = struct {
         /// Stop the provider
         stop: *const fn (ptr: *anyopaque) anyerror!void,
 
-        /// Set event callback
-        setEventCallback: *const fn (ptr: *anyopaque, callback: primitives.EventCallback, user_data: ?*anyopaque) void,
+        /// Get the event queue for receiving events
+        getEventQueue: *const fn (ptr: *anyopaque) *AsyncQueue(primitives.Event),
 
         /// Get adapter information
         getAdapterInfo: *const fn (ptr: *anyopaque) anyerror!primitives.AdapterInfo,
@@ -92,8 +93,8 @@ pub const Provider = struct {
         return self.vtable.stop(self.ptr);
     }
 
-    pub fn setEventCallback(self: Provider, callback: primitives.EventCallback, user_data: ?*anyopaque) void {
-        return self.vtable.setEventCallback(self.ptr, callback, user_data);
+    pub fn getEventQueue(self: Provider) *AsyncQueue(primitives.Event) {
+        return self.vtable.getEventQueue(self.ptr);
     }
 
     pub fn getAdapterInfo(self: Provider) !primitives.AdapterInfo {
@@ -160,7 +161,7 @@ pub const Provider = struct {
 
 /// Helper to create a provider from a concrete implementation
 pub fn createProvider(comptime T: type, impl: *T) Provider {
-    const gen = struct {
+    const s = struct {
         fn initFn(ptr: *anyopaque, allocator: std.mem.Allocator) !void {
             const self: *T = @ptrCast(@alignCast(ptr));
             return self.init(allocator);
@@ -181,9 +182,9 @@ pub fn createProvider(comptime T: type, impl: *T) Provider {
             return self.stop();
         }
 
-        fn setEventCallbackFn(ptr: *anyopaque, callback: primitives.EventCallback, user_data: ?*anyopaque) void {
+        fn getEventQueueFn(ptr: *anyopaque) *AsyncQueue(primitives.Event) {
             const self: *T = @ptrCast(@alignCast(ptr));
-            return self.setEventCallback(callback, user_data);
+            return self.getEventQueue();
         }
 
         fn getAdapterInfoFn(ptr: *anyopaque) !primitives.AdapterInfo {
@@ -262,7 +263,7 @@ pub fn createProvider(comptime T: type, impl: *T) Provider {
             .deinit = deinitFn,
             .start = startFn,
             .stop = stopFn,
-            .setEventCallback = setEventCallbackFn,
+            .getEventQueue = getEventQueueFn,
             .getAdapterInfo = getAdapterInfoFn,
             .startDiscovery = startDiscoveryFn,
             .stopDiscovery = stopDiscoveryFn,
@@ -278,6 +279,6 @@ pub fn createProvider(comptime T: type, impl: *T) Provider {
 
     return Provider{
         .ptr = impl,
-        .vtable = &gen.vtable,
+        .vtable = &s.vtable,
     };
 }

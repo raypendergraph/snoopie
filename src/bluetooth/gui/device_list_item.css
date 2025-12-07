@@ -1,0 +1,66 @@
+/* Device list item styling */
+.device-list-item {
+    background-color: @theme_bg_color;
+    border-radius: 6px;
+    border: 1px solid @borders;
+    transition: background-color 200ms ease;
+}
+
+.device-list-item:hover {
+    background-color: mix(@theme_bg_color, @theme_selected_bg_color, 0.9);
+}
+
+/* Device name - bold and prominent */
+.device-name {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: @theme_fg_color;
+}
+
+/* Device address - monospace and muted */
+.device-address {
+    font-family: monospace;
+    font-size: 0.9em;
+    color: @theme_unfocused_fg_color;
+}
+
+/* RSSI signal strength */
+.device-rssi {
+    font-family: monospace;
+    font-weight: 600;
+    font-size: 0.95em;
+    min-width: 70px;
+}
+
+/* Status indicator */
+.device-status {
+    font-weight: bold;
+    font-size: 0.9em;
+    min-width: 90px;
+}
+
+.device-status.connected {
+    color: @success_color;
+}
+
+/* RSSI color coding based on signal strength */
+/* These would need to be applied dynamically based on value */
+.rssi-excellent {
+    color: #4caf50; /* Green - strong signal (-50 to -30 dBm) */
+}
+
+.rssi-good {
+    color: #8bc34a; /* Light green - good signal (-70 to -50 dBm) */
+}
+
+.rssi-fair {
+    color: #ffc107; /* Amber - fair signal (-80 to -70 dBm) */
+}
+
+.rssi-weak {
+    color: #ff9800; /* Orange - weak signal (-90 to -80 dBm) */
+}
+
+.rssi-poor {
+    color: #f44336; /* Red - poor signal (below -90 dBm) */
+}
