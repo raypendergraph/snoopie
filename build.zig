@@ -4,11 +4,6 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Create core module
-    const core_module = b.addModule("core", .{
-        .root_source_file = b.path("src/core.zig"),
-    });
-
     const exe = b.addExecutable(.{
         .name = "bt",
         .root_module = b.createModule(.{
@@ -16,10 +11,8 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         }),
+        .use_llvm = true,
     });
-
-    // Add core module to executable
-    exe.root_module.addImport("core", core_module);
 
     // Link GTK4 libraries
     exe.linkLibC();
@@ -31,6 +24,14 @@ pub fn build(b: *std.Build) void {
 
     // Link Bluetooth libraries (bluez on Linux)
     exe.linkSystemLibrary("bluetooth");
+
+    // Create modules
+    const core_module = b.addModule("core", .{
+        .root_source_file = b.path("src/core.zig"),
+    });
+
+    // Add modules to executable
+    exe.root_module.addImport("core", core_module);
 
     b.installArtifact(exe);
 

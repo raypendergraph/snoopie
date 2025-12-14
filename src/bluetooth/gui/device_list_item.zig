@@ -1,13 +1,9 @@
 const std = @import("std");
 const Device = @import("../models/device.zig").Device;
 const primitives = @import("../primitives.zig");
-const core = @import("../../core.zig");
+const core = @import("core");
+const c = @import("root").c;
 const loadComponentCss = core.gui.gtk.loadComponentCss;
-
-const c = @cImport({
-    @cDefine("GLIB_DISABLE_DEPRECATION_WARNINGS", "1");
-    @cInclude("gtk/gtk.h");
-});
 
 fn loadStyles() void {
     const ui_css = @embedFile("device_list_item.css");
@@ -62,7 +58,7 @@ pub const DeviceListItem = struct {
 
         self.* = DeviceListItem{
             .widget = @ptrCast(widget),
-            .device_address = device.address,
+            .device_address = device.data.address,
             .name_label = @ptrCast(name_label),
             .address_label = @ptrCast(address_label),
             .rssi_label = @ptrCast(rssi_label),
@@ -84,14 +80,22 @@ pub const DeviceListItem = struct {
     /// This is the ONLY place we manipulate the widgets
     pub fn update(self: *DeviceListItem, device: *const Device) void {
         // Update name
-        const name = device.name orelse "Unknown Device";
-        var name_buf: [256]u8 = undefined;
-        const name_str = std.fmt.bufPrintZ(&name_buf, "{s}", .{name}) catch return;
-        c.gtk_label_set_text(self.name_label, name_str.ptr);
+        if (device.data.name) |name| {
+            c.gtk_label_set_text(self.name_label, name.ptr);
+        } else {
+            c.gtk_label_set_text(self.name_label, "Unknown Device");
+        }
 
         // Update address
         var addr_buf: [18]u8 = undefined;
-        const addr_str = std.fmt.bufPrintZ(&addr_buf, "{any}", .{device.address}) catch "??:??:??:??:??:??";
+        const addr_str = std.fmt.bufPrintZ(&addr_buf, "{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
+            device.data.address.bytes[5],
+            device.data.address.bytes[4],
+            device.data.address.bytes[3],
+            device.data.address.bytes[2],
+            device.data.address.bytes[1],
+            device.data.address.bytes[0],
+        }) catch "??:??:??:??:??:??";
         c.gtk_label_set_text(self.address_label, addr_str.ptr);
 
         // Update RSSI

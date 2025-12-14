@@ -1,0 +1,10 @@
+/* Main Bluetooth panel styling */
+.bluetooth-main-panel {
+    background-color: @theme_base_color;
+}
+
+/* Header styling */
+.bluetooth-header {
+    color: @theme_fg_color;
+    padding: 5px 0;
+}

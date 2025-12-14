@@ -1,7 +1,7 @@
 const std = @import("std");
 const provider = @import("provider.zig");
-const primitives = @import("primitives.zig");
-const core = @import("../core.zig");
+const primitives = @import("../primitives.zig");
+const core = @import("core");
 const AsyncQueue = core.async.Queue;
 const gdbus = @import("gdbus.zig");
 
@@ -60,6 +60,8 @@ pub const DBusProvider = struct {
     fn subscribeToSignals(self: *DBusProvider) !void {
         const conn = self.dbus_conn orelse return error.NoConnection;
 
+        std.debug.print("[DBusProvider] Subscribing to BlueZ signals...\n", .{});
+
         // Subscribe to InterfacesAdded (device discovery)
         const id1 = conn.subscribeSignal(
             BLUEZ_SERVICE,
@@ -69,6 +71,7 @@ pub const DBusProvider = struct {
             onDbusSignal,
             self,
         );
+        std.debug.print("[DBusProvider] Subscribed to InterfacesAdded (ID: {})\n", .{id1});
         try self.subscription_ids.append(self.allocator, id1);
 
         // Subscribe to PropertiesChanged (state changes, notifications)
@@ -242,27 +245,38 @@ pub const DBusProvider = struct {
             }
         } else if (std.mem.eql(u8, iface, "org.freedesktop.DBus.Properties")) {
             if (std.mem.eql(u8, signal, "PropertiesChanged")) {
-                std.debug.print("[DBusProvider] TODO: Handle PropertiesChanged\n", .{});
+                self.handlePropertiesChangedSignal(path, parameters) catch |err| {
+                    std.debug.print("[DBusProvider] Failed to handle PropertiesChanged: {any}\n", .{err});
+                };
             }
         }
     }
 
     /// Handle org.freedesktop.DBus.ObjectManager.InterfacesAdded signal
     /// Parses the GVariant and creates a device_discovered event
-    fn handleInterfacesAddedSignal(self: *DBusProvider, object_path: []const u8, parameters: ?*gdbus.c.GVariant) !void {
+    fn handleInterfacesAddedSignal(self: *DBusProvider, _: []const u8, parameters: ?*gdbus.c.GVariant) !void {
         const variant = parameters orelse return;
 
         // InterfacesAdded signature: (oa{sa{sv}})
-        // object_path is already provided as first param
-        // variant contains: dict<string, dict<string, variant>>
+        // First element is object path, second is interfaces dict
+        var actual_path: [*c]const u8 = undefined;
+        var interfaces_dict: ?*gdbus.c.GVariant = null;
+
+        // Extract object path and interfaces from the variant tuple
+        gdbus.c.g_variant_get(variant, "(o@a{sa{sv}})", &actual_path, &interfaces_dict);
+        defer if (interfaces_dict) |d| gdbus.c.g_variant_unref(d);
+
+        const object_path = std.mem.span(actual_path);
+        std.debug.print("[DBusProvider] InterfacesAdded for object: {s}\n", .{object_path});
 
         // Check if this is a Device interface
         if (!std.mem.startsWith(u8, object_path, "/org/bluez/hci")) return;
         if (std.mem.indexOf(u8, object_path, "/dev_") == null) return;
 
         // Get the interface dictionary
+        const interfaces = interfaces_dict orelse return;
         var interfaces_iter: gdbus.c.GVariantIter = undefined;
-        _ = gdbus.c.g_variant_iter_init(&interfaces_iter, variant);
+        _ = gdbus.c.g_variant_iter_init(&interfaces_iter, interfaces);
 
         var interface_name: [*c]const u8 = undefined;
         var properties_variant: ?*gdbus.c.GVariant = null;
@@ -282,6 +296,7 @@ pub const DBusProvider = struct {
 
                 // Create event and push to queue
                 const event = primitives.Event{ .device_discovered = device };
+                std.debug.print("[DBusProvider] Pushing device event to queue: {s}\n", .{object_path});
                 self.event_queue.push(event) catch |err| {
                     std.debug.print("[DBusProvider] Failed to queue event: {any}\n", .{err});
                     // Clean up device on error
@@ -289,10 +304,50 @@ pub const DBusProvider = struct {
                     dev_mut.deinit(self.allocator);
                 };
 
-                std.debug.print("[DBusProvider] Device discovered: {s}\n", .{object_path});
+                std.debug.print("[DBusProvider] Device discovered and queued: {s}\n", .{object_path});
                 break;
             }
         }
+    }
+
+    /// Handle org.freedesktop.DBus.Properties.PropertiesChanged signal
+    /// PropertiesChanged signature: (sa{sv}as)
+    /// - s: interface name
+    /// - a{sv}: changed properties dict
+    /// - as: invalidated properties array
+    fn handlePropertiesChangedSignal(self: *DBusProvider, object_path: []const u8, parameters: ?*gdbus.c.GVariant) !void {
+        const variant = parameters orelse return;
+
+        std.debug.print("[DBusProvider] PropertiesChanged on: {s}\n", .{object_path});
+
+        // Only handle Device1 properties for now
+        if (std.mem.indexOf(u8, object_path, "/dev_") == null) return;
+        if (!std.mem.startsWith(u8, object_path, "/org/bluez/hci")) return;
+
+        // Extract interface name and changed properties
+        var interface_name: [*c]const u8 = undefined;
+        var changed_props: ?*gdbus.c.GVariant = null;
+        var invalidated: ?*gdbus.c.GVariant = null;
+
+        gdbus.c.g_variant_get(variant, "(s@a{sv}@as)", &interface_name, &changed_props, &invalidated);
+        defer if (changed_props) |p| gdbus.c.g_variant_unref(p);
+        defer if (invalidated) |i| gdbus.c.g_variant_unref(i);
+
+        const iface = std.mem.span(interface_name);
+        std.debug.print("[DBusProvider] Interface: {s}\n", .{iface});
+
+        // Only handle org.bluez.Device1 for now
+        if (!std.mem.eql(u8, iface, "org.bluez.Device1")) return;
+
+        const props = changed_props orelse return;
+
+        // Parse the updated device properties
+        const device = try self.parseDeviceProperties(object_path, props);
+
+        // Push as device_discovered event (will update existing device in registry)
+        const event = primitives.Event{ .device_discovered = device };
+        std.debug.print("[DBusProvider] Pushing updated device event for: {s}\n", .{object_path});
+        try self.event_queue.push(event);
     }
 
     /// Parse BlueZ Device1 properties into DeviceDiscovered
@@ -319,19 +374,24 @@ pub const DBusProvider = struct {
             var addr_buf: [17]u8 = undefined;
             var buf_idx: usize = 0;
             for (addr_str) |char| {
+                if (buf_idx >= 17) break; // Address complete
                 if (char == '_') {
-                    if (buf_idx < 17) {
-                        addr_buf[buf_idx] = ':';
-                        buf_idx += 1;
-                    }
+                    addr_buf[buf_idx] = ':';
+                    buf_idx += 1;
                 } else {
-                    if (buf_idx < 17) {
-                        addr_buf[buf_idx] = char;
-                        buf_idx += 1;
-                    }
+                    addr_buf[buf_idx] = char;
+                    buf_idx += 1;
                 }
             }
-            device.address = primitives.Address.parse(addr_buf[0 .. buf_idx - 1]) catch primitives.Address.ZERO;
+            if (buf_idx == 17) {
+                device.address = primitives.Address.parse(&addr_buf) catch blk: {
+                    std.debug.print("[DBusProvider] Failed to parse address from '{s}'\n", .{addr_buf});
+                    break :blk primitives.Address.ZERO;
+                };
+                std.debug.print("[DBusProvider] Parsed address: {any}\n", .{device.address});
+            } else {
+                std.debug.print("[DBusProvider] Invalid address length: {d} from '{s}'\n", .{ buf_idx, object_path });
+            }
         }
 
         // Iterate through properties

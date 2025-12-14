@@ -2,7 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug with GDB",
+      "name": "Debug (LLDB-DAP)",
+      "type": "lldb-dap",
+      "request": "launch",
+      "program": "${workspaceFolder}/zig-out/bin/bt",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build"
+    },
+    {
+      "name": "Debug (GDB)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/zig-out/bin/bt",
@@ -13,10 +22,18 @@
       "externalConsole": false,
       "MIMode": "gdb",
       "preLaunchTask": "build",
+      "sourceFileMap": {
+        "/home/user/claude/snoopie": "${workspaceFolder}"
+      },
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",
           "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Set source directory",
+          "text": "-environment-directory ${workspaceFolder}/src",
           "ignoreFailures": true
         }
       ]

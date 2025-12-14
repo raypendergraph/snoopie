@@ -4,11 +4,14 @@ const core = @import("core");
 const ObjectContext = core.data.ObjectContext;
 const ObjectID = core.data.ObjectID;
 
-/// Device model with automatic change notifications
+/// Observable version of Device - demonstrates manual implementation
 /// Read data via the public `data` field, mutate via explicit methods
-pub const Device = struct {
+pub const ObservableDevice = struct {
+    // Private observation machinery
     context: *ObjectContext,
     object_id: ObjectID,
+
+    // Public data - read-only access (use setters to mutate)
     data: Data,
 
     pub const RssiSample = struct {
@@ -51,7 +54,7 @@ pub const Device = struct {
         connection_state: primitives.ConnectionState,
 
         /// Signal strength history (most recent last)
-        rssi_history: std.ArrayListUnmanaged(RssiSample) = .{},
+        rssi_history: std.ArrayList(RssiSample),
 
         /// Transmit power level in dBm
         tx_power: ?i8,
@@ -63,10 +66,10 @@ pub const Device = struct {
         service_uuids: ?[]const primitives.UUID,
 
         /// Discovered GATT services (populated after connection)
-        gatt_services: std.ArrayListUnmanaged(primitives.GattService) = .{},
+        gatt_services: std.ArrayList(primitives.GattService),
 
         /// History of characteristic notifications/indications
-        characteristic_updates: std.ArrayListUnmanaged(CharacteristicUpdate) = .{},
+        characteristic_updates: std.ArrayList(CharacteristicUpdate),
 
         /// Timestamp when device was first discovered
         first_seen: i64,
@@ -82,18 +85,10 @@ pub const Device = struct {
     };
 
     /// Initialize an observable device - requires a context
-    pub fn init(context: *ObjectContext, address: primitives.Address, timestamp: i64) !Device {
-        // Format address as ObjectID string
-        const id_str = try std.fmt.allocPrint(context.allocator, "{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
-            address.bytes[5],
-            address.bytes[4],
-            address.bytes[3],
-            address.bytes[2],
-            address.bytes[1],
-            address.bytes[0],
-        });
+    pub fn init(context: *ObjectContext, address: primitives.Address, timestamp: i64) !ObservableDevice {
+        const id_str = try std.fmt.allocPrint(context.allocator, "{any}", .{address});
 
-        const device = Device{
+        const device = ObservableDevice{
             .context = context,
             .object_id = ObjectID{
                 .type_name = "Device",
@@ -107,10 +102,12 @@ pub const Device = struct {
                 .class_of_device = null,
                 .appearance = null,
                 .connection_state = .disconnected,
-                // ArrayListUnmanaged fields use default = .{} from struct definition
+                .rssi_history = std.ArrayList(RssiSample).init(context.allocator),
                 .tx_power = null,
                 .manufacturer_data = null,
                 .service_uuids = null,
+                .gatt_services = std.ArrayList(primitives.GattService).init(context.allocator),
+                .characteristic_updates = std.ArrayList(CharacteristicUpdate).init(context.allocator),
                 .first_seen = timestamp,
                 .last_seen = timestamp,
                 .last_connected = null,
@@ -118,33 +115,32 @@ pub const Device = struct {
             },
         };
 
-        // NOTE: Don't notify here - caller must notify after adding to registry
-        // Otherwise observers will try to look up a device that doesn't exist yet
+        // Register with context
+        context.notifyInserted(device.object_id);
 
         return device;
     }
 
-    pub fn deinit(self: *Device) void {
+    pub fn deinit(self: *ObservableDevice) void {
         const allocator = self.context.allocator;
 
-        self.context.notifyDeleted(self.object_id);
+        self.context.notifyRemoved(self.object_id);
 
         if (self.data.name) |n| allocator.free(n);
         if (self.data.manufacturer_data) |d| allocator.free(d);
         if (self.data.service_uuids) |u| allocator.free(u);
 
-        // ArrayListUnmanaged requires explicit allocator in deinit
-        self.data.rssi_history.deinit(allocator);
+        self.data.rssi_history.deinit();
 
         for (self.data.gatt_services.items) |*svc| {
             svc.deinit(allocator);
         }
-        self.data.gatt_services.deinit(allocator);
+        self.data.gatt_services.deinit();
 
         for (self.data.characteristic_updates.items) |*update| {
             update.deinit(allocator);
         }
-        self.data.characteristic_updates.deinit(allocator);
+        self.data.characteristic_updates.deinit();
 
         allocator.free(self.object_id.unique_id);
     }
@@ -153,46 +149,43 @@ pub const Device = struct {
     // MUTATION METHODS - Update fields with automatic notifications
     // ========================================================================
 
-    pub fn setName(self: *Device, value: ?[]const u8) !void {
+    pub fn setName(self: *ObservableDevice, value: ?[]const u8) !void {
         const allocator = self.context.allocator;
 
-        // Free old value if it exists
         if (self.data.name) |old_name| {
             allocator.free(old_name);
         }
 
-        // Duplicate new value
         if (value) |new_name| {
             self.data.name = try allocator.dupe(u8, new_name);
         } else {
             self.data.name = null;
         }
 
-        // Notify observers
         self.context.notifyUpdated(self.object_id, "name");
     }
 
-    pub fn setDeviceType(self: *Device, value: primitives.DeviceType) void {
+    pub fn setDeviceType(self: *ObservableDevice, value: primitives.DeviceType) void {
         self.data.device_type = value;
         self.context.notifyUpdated(self.object_id, "device_type");
     }
 
-    pub fn setAppearance(self: *Device, value: ?u16) void {
+    pub fn setAppearance(self: *ObservableDevice, value: ?u16) void {
         self.data.appearance = value;
         self.context.notifyUpdated(self.object_id, "appearance");
     }
 
-    pub fn setConnectionState(self: *Device, value: primitives.ConnectionState) void {
+    pub fn setConnectionState(self: *ObservableDevice, value: primitives.ConnectionState) void {
         self.data.connection_state = value;
         self.context.notifyUpdated(self.object_id, "connection_state");
     }
 
-    pub fn setTxPower(self: *Device, value: ?i8) void {
+    pub fn setTxPower(self: *ObservableDevice, value: ?i8) void {
         self.data.tx_power = value;
         self.context.notifyUpdated(self.object_id, "tx_power");
     }
 
-    pub fn setManufacturerData(self: *Device, value: ?[]const u8) !void {
+    pub fn setManufacturerData(self: *ObservableDevice, value: ?[]const u8) !void {
         const allocator = self.context.allocator;
 
         if (self.data.manufacturer_data) |old_data| {
@@ -208,7 +201,7 @@ pub const Device = struct {
         self.context.notifyUpdated(self.object_id, "manufacturer_data");
     }
 
-    pub fn setServiceUuids(self: *Device, value: ?[]const primitives.UUID) !void {
+    pub fn setServiceUuids(self: *ObservableDevice, value: ?[]const primitives.UUID) !void {
         const allocator = self.context.allocator;
 
         if (self.data.service_uuids) |old_uuids| {
@@ -224,12 +217,12 @@ pub const Device = struct {
         self.context.notifyUpdated(self.object_id, "service_uuids");
     }
 
-    pub fn setLastSeen(self: *Device, value: i64) void {
+    pub fn setLastSeen(self: *ObservableDevice, value: i64) void {
         self.data.last_seen = value;
         self.context.notifyUpdated(self.object_id, "last_seen");
     }
 
-    pub fn setLastConnected(self: *Device, value: ?i64) void {
+    pub fn setLastConnected(self: *ObservableDevice, value: ?i64) void {
         self.data.last_connected = value;
         self.context.notifyUpdated(self.object_id, "last_connected");
     }
@@ -238,13 +231,12 @@ pub const Device = struct {
     // COLLECTION MUTATORS - Modify collections with notifications
     // ========================================================================
 
-    pub fn addRssiSample(self: *Device, timestamp: i64, rssi: i8) !void {
+    pub fn addRssiSample(self: *ObservableDevice, timestamp: i64, rssi: i8) !void {
         try self.data.rssi_history.append(self.context.allocator, RssiSample{
             .timestamp = timestamp,
             .rssi = rssi,
         });
 
-        // Keep only last 100 samples
         if (self.data.rssi_history.items.len > 100) {
             _ = self.data.rssi_history.orderedRemove(0);
         }
@@ -252,7 +244,7 @@ pub const Device = struct {
         self.context.notifyUpdated(self.object_id, "rssi_history");
     }
 
-    pub fn setGattServices(self: *Device, services: []const primitives.GattService) !void {
+    pub fn setGattServices(self: *ObservableDevice, services: []const primitives.GattService) !void {
         const allocator = self.context.allocator;
 
         // Clear existing services
@@ -298,7 +290,7 @@ pub const Device = struct {
     }
 
     pub fn addCharacteristicUpdate(
-        self: *Device,
+        self: *ObservableDevice,
         service_uuid: primitives.UUID,
         char_uuid: primitives.UUID,
         value: []const u8,
@@ -325,12 +317,12 @@ pub const Device = struct {
     // UTILITY METHODS
     // ========================================================================
 
-    pub fn getCurrentRssi(self: *const Device) ?i8 {
+    pub fn getCurrentRssi(self: *const ObservableDevice) ?i8 {
         if (self.data.rssi_history.items.len == 0) return null;
         return self.data.rssi_history.items[self.data.rssi_history.items.len - 1].rssi;
     }
 
-    pub fn getAverageRssi(self: *const Device, sample_count: usize) ?i8 {
+    pub fn getAverageRssi(self: *const ObservableDevice, sample_count: usize) ?i8 {
         if (self.data.rssi_history.items.len == 0) return null;
 
         const count = @min(sample_count, self.data.rssi_history.items.len);
@@ -344,11 +336,11 @@ pub const Device = struct {
         return @intCast(@divTrunc(sum, @as(i32, @intCast(count))));
     }
 
-    pub fn isConnected(self: *const Device) bool {
+    pub fn isConnected(self: *const ObservableDevice) bool {
         return self.data.connection_state == .connected;
     }
 
-    pub fn getDisplayName(self: *const Device, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getDisplayName(self: *const ObservableDevice, allocator: std.mem.Allocator) ![]const u8 {
         if (self.data.name) |n| {
             return try allocator.dupe(u8, n);
         }

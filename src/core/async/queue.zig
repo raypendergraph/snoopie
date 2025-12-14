@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn AsyncQueue(comptime T: type) type {
+pub fn Queue(comptime T: type) type {
     return struct {
         const Self = @This();
 

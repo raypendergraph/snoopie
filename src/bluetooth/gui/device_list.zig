@@ -1,19 +1,28 @@
 const std = @import("std");
 const Device = @import("../models/device.zig").Device;
-const DeviceRegistry = @import("../models/device_registry.zig").DeviceRegistry;
 const primitives = @import("../primitives.zig");
 const DeviceListItem = @import("device_list_item.zig").DeviceListItem;
+const core = @import("core");
+const loadComponentCss = core.gui.gtk.loadComponentCss;
 
 const c = @cImport({
     @cDefine("GLIB_DISABLE_DEPRECATION_WARNINGS", "1");
     @cInclude("gtk/gtk.h");
 });
 
+fn loadStyles() void {
+    const ui_css = @embedFile("device_list.css");
+    loadComponentCss(ui_css);
+}
+
+var styles_once = std.once(loadStyles);
+
 /// Device list widget - displays all discovered Bluetooth devices
 pub const DeviceList = struct {
     allocator: std.mem.Allocator,
     scroll_window: *c.GtkScrolledWindow,
     list_box: *c.GtkListBox,
+    placeholder: *c.GtkWidget,
     items: std.AutoHashMap(primitives.Address, *DeviceListItem),
 
     /// Hash function for Address (required for HashMap)
@@ -33,6 +42,8 @@ pub const DeviceList = struct {
         const self = try allocator.create(DeviceList);
         errdefer allocator.destroy(self);
 
+        styles_once.call();
+
         // Create scrolled window
         const scroll_window = c.gtk_scrolled_window_new();
         c.gtk_scrolled_window_set_policy(
@@ -47,6 +58,12 @@ pub const DeviceList = struct {
         c.gtk_list_box_set_selection_mode(@ptrCast(list_box), c.GTK_SELECTION_SINGLE);
         c.gtk_widget_add_css_class(list_box, "device-list");
 
+        // Create placeholder for empty list
+        const placeholder = c.gtk_label_new("No devices discovered yet.\nClick 'Start Scan' to begin.");
+        c.gtk_widget_add_css_class(placeholder, "device-list-empty");
+        c.gtk_label_set_justify(@ptrCast(placeholder), c.GTK_JUSTIFY_CENTER);
+        c.gtk_list_box_set_placeholder(@ptrCast(list_box), placeholder);
+
         // Add list box to scrolled window
         c.gtk_scrolled_window_set_child(@ptrCast(scroll_window), list_box);
 
@@ -54,6 +71,7 @@ pub const DeviceList = struct {
             .allocator = allocator,
             .scroll_window = @ptrCast(scroll_window),
             .list_box = @ptrCast(list_box),
+            .placeholder = placeholder,
             .items = std.AutoHashMap(primitives.Address, *DeviceListItem).init(allocator),
         };
 
@@ -75,60 +93,17 @@ pub const DeviceList = struct {
         return @ptrCast(@alignCast(self.scroll_window));
     }
 
-    /// Update the list with devices from the registry
-    pub fn updateFromRegistry(self: *DeviceList, registry: *DeviceRegistry) !void {
-        // Get all devices sorted by last seen
-        const devices = try registry.getDevicesSortedByLastSeen(self.allocator);
-        defer self.allocator.free(devices);
-
-        // Track which devices we've seen in this update
-        var seen_addresses = std.AutoHashMap(primitives.Address, void).init(self.allocator);
-        defer seen_addresses.deinit();
-
-        for (devices) |device| {
-            try seen_addresses.put(device.address, {});
-
-            if (self.items.get(device.address)) |item| {
-                // Update existing item
-                item.update(&device);
-            } else {
-                // Create new item
-                const item = try DeviceListItem.create(self.allocator, &device);
-                try self.items.put(device.address, item);
-                c.gtk_list_box_append(self.list_box, item.getWidget());
-            }
-        }
-
-        // Remove items for devices that no longer exist
-        // (In practice, devices rarely disappear, but this keeps the list clean)
-        var items_to_remove = std.ArrayList(primitives.Address).init(self.allocator);
-        defer items_to_remove.deinit();
-
-        var it = self.items.keyIterator();
-        while (it.next()) |addr| {
-            if (!seen_addresses.contains(addr.*)) {
-                try items_to_remove.append(addr.*);
-            }
-        }
-
-        for (items_to_remove.items) |addr| {
-            if (self.items.fetchRemove(addr)) |kv| {
-                const item = kv.value;
-                c.gtk_list_box_remove(self.list_box, item.getWidget());
-                item.destroy(self.allocator);
-            }
-        }
-    }
-
     /// Add or update a single device
     pub fn updateDevice(self: *DeviceList, device: *const Device) !void {
-        if (self.items.get(device.address)) |item| {
+        const addr = device.data.address;
+
+        if (self.items.get(addr)) |item| {
             // Update existing item
             item.update(device);
         } else {
             // Create new item
             const item = try DeviceListItem.create(self.allocator, device);
-            try self.items.put(device.address, item);
+            try self.items.put(addr, item);
 
             // Prepend new devices to top of list (most recent first)
             c.gtk_list_box_prepend(self.list_box, @ptrCast(item.getWidget()));

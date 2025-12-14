@@ -1,0 +1,14 @@
+/* Device list container styling */
+.device-list {
+    background-color: @theme_base_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    min-height: 200px;
+}
+
+/* Empty state placeholder */
+.device-list-empty {
+    padding: 40px;
+    color: @theme_unfocused_fg_color;
+    font-size: 1.1em;
+}

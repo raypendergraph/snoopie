@@ -76,7 +76,6 @@ pub const ObjectChange = struct {
 };
 
 /// Central context for managing objects and their change notifications
-/// Similar to Core Data's NSManagedObjectContext
 pub const ObjectContext = struct {
     allocator: std.mem.Allocator,
     change_emitter: Emitter(ObjectChange),

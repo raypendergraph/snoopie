@@ -1,6 +1,6 @@
 const std = @import("std");
-const primitives = @import("primitives.zig");
-const AsyncQueue = @import("../core/async.zig").AsyncQueue;
+const primitives = @import("../primitives.zig");
+const EventQueue = @import("core").async.Queue(primitives.Event);
 
 /// Provider interface - all Bluetooth providers must implement this
 pub const Provider = struct {
@@ -21,7 +21,7 @@ pub const Provider = struct {
         stop: *const fn (ptr: *anyopaque) anyerror!void,
 
         /// Get the event queue for receiving events
-        getEventQueue: *const fn (ptr: *anyopaque) *AsyncQueue(primitives.Event),
+        getEventQueue: *const fn (ptr: *anyopaque) *EventQueue(primitives.Event),
 
         /// Get adapter information
         getAdapterInfo: *const fn (ptr: *anyopaque) anyerror!primitives.AdapterInfo,
@@ -93,7 +93,7 @@ pub const Provider = struct {
         return self.vtable.stop(self.ptr);
     }
 
-    pub fn getEventQueue(self: Provider) *AsyncQueue(primitives.Event) {
+    pub fn getEventQueue(self: Provider) *EventQueue(primitives.Event) {
         return self.vtable.getEventQueue(self.ptr);
     }
 
@@ -182,7 +182,7 @@ pub fn createProvider(comptime T: type, impl: *T) Provider {
             return self.stop();
         }
 
-        fn getEventQueueFn(ptr: *anyopaque) *AsyncQueue(primitives.Event) {
+        fn getEventQueueFn(ptr: *anyopaque) *EventQueue(primitives.Event) {
             const self: *T = @ptrCast(@alignCast(ptr));
             return self.getEventQueue();
         }

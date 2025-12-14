@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <object class="GtkBox" id="root_box">
+    <property name="orientation">vertical</property>
+    <property name="spacing">10</property>
+    <property name="margin-start">10</property>
+    <property name="margin-end">10</property>
+    <property name="margin-top">10</property>
+    <property name="margin-bottom">10</property>
+    <style>
+      <class name="bluetooth-main-panel"/>
+    </style>
+
+    <!-- Header label -->
+    <child>
+      <object class="GtkLabel" id="header_label">
+        <property name="halign">start</property>
+        <property name="label">Bluetooth Devices</property>
+        <style>
+          <class name="title-2"/>
+          <class name="bluetooth-header"/>
+        </style>
+      </object>
+    </child>
+
+    <!-- Placeholder for device list (will be added programmatically) -->
+  </object>
+</interface>

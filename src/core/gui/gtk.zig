@@ -1,9 +1,5 @@
 const std = @import("std");
-
-const c = @cImport({
-    @cDefine("GLIB_DISABLE_DEPRECATION_WARNINGS", "1");
-    @cInclude("gtk/gtk.h");
-});
+const c = @import("root").c;
 
 /// Load CSS styles from embedded content (compile-time only)
 pub fn loadComponentCss(comptime css_content: []const u8) void {
